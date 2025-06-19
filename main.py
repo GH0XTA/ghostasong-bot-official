@@ -10,6 +10,7 @@ autoplay_enabled = {}
 now_playing = {}
 leave_tasks = {}
 
+
 def get_queue(guild_id):
     if guild_id not in song_queue:
         song_queue[guild_id] = asyncio.Queue()
@@ -42,6 +43,7 @@ async def on_voice_state_update(member, before, after):
         if voice_client and voice_client.channel == before.channel:
             # Check if there are any human users left
             non_bots = [m for m in before.channel.members if not m.bot]
+             await asyncio.sleep(3)
             if len(non_bots) == 0:
                 await voice_client.disconnect()
                 channel = before.channel
@@ -71,9 +73,14 @@ async def leave(ctx):
 
 @bot.command(name="p", aliases=["play"])
 async def play(ctx, *, search: str):
-    task = leave_tasks.get(ctx.guild.id)
+    guild_id = ctx.guild.id
+
+    # Cancel leave task if music is playing again
+    task = leave_tasks.get(guild_id)
     if task and not task.done():
         task.cancel()
+
+    # Connect to voice if not already
     vc = ctx.voice_client
     if not vc:
         if ctx.author.voice:
@@ -81,22 +88,26 @@ async def play(ctx, *, search: str):
         else:
             return await ctx.send("❌ You're not in a voice channel.")
 
+    # Download or search YouTube
     with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
         if "youtube.com" in search or "youtu.be" in search:
             info = ydl.extract_info(search, download=False)
         else:
             info = ydl.extract_info(f"ytsearch:{search}", download=False)['entries'][0]
 
-        info['requester'] = ctx.author.mention
+    info['requester'] = ctx.author.mention
 
-    queue = get_queue(ctx.guild.id)
+    # Add to queue for this guild
+    queue = get_queue(guild_id)
     await queue.put(info)
 
-    await ctx.send(f"➕ Added to queue: **{info['title']}**")
+    await ctx.send(f"🎵 Added to queue: **{info['title']}**")
 
-    if not vc.is_playing():
-        autoplay_enabled[ctx.guild.id] = True
+    # Only start playback if not already playing
+    if not vc.is_playing() and not now_playing.get(guild_id):
+        autoplay_enabled[guild_id] = True
         await play_next(ctx)
+
 
 
 @bot.command()
@@ -204,13 +215,15 @@ async def help(ctx):
 
 keep_alive()
 async def play_next(ctx):
-    queue = get_queue(ctx.guild.id)
-    if queue.empty():
-        now_playing[ctx.guild.id] = None
+    guild_id = ctx.guild.id
+    queue = get_queue(guild_id)
 
+    if queue.empty():
+        now_playing[guild_id] = None
+
+        # Wait 5 minutes before leaving
         async def delayed_leave():
-            await asyncio.sleep(300)  # wait 5 minutes
-            # Check again in case a song was added during the wait
+            await asyncio.sleep(300)  # 5 minutes
             if queue.empty():
                 vc = ctx.voice_client
                 if vc and vc.is_connected():
@@ -218,23 +231,23 @@ async def play_next(ctx):
                     await ctx.send("👋 Left voice channel after 5 minutes of inactivity.")
 
         task = asyncio.create_task(delayed_leave())
-        leave_tasks[ctx.guild.id] = task
+        leave_tasks[guild_id] = task
         return
 
-
-    if not autoplay_enabled.get(ctx.guild.id, True):
+    if not autoplay_enabled.get(guild_id, True):
         return
 
+    # Get next song
     song = await queue.get()
-    now_playing[ctx.guild.id] = {
-        "title": song['title'],
-        "url": song['webpage_url'],
+    now_playing[guild_id] = {
+        "title": song["title"],
+        "url": song["webpage_url"],
         "duration": song.get("duration"),
         "thumbnail": song.get("thumbnail"),
-        "requester": ctx.author.mention
+        "requester": song["requester"],
     }
 
-    source = discord.FFmpegPCMAudio(song['url'], **FFMPEG_OPTIONS)
+    source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
 
     def after_play(err):
         fut = asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
@@ -244,7 +257,7 @@ async def play_next(ctx):
             pass
 
     ctx.voice_client.play(source, after=after_play)
-    await ctx.send(f"🎶 Now playing: **{song['title']}**")
+    await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
 
 bot.run(os.getenv("DISCORD_TOKEN"))
 
