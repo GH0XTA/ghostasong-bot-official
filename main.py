@@ -23,7 +23,10 @@ bot = commands.Bot(command_prefix='g!', intents=intents)
 bot.remove_command("help")
 
 
-YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist': 'True'}
+YDL_OPTIONS = {'format': 'bestaudio',
+               'noplaylist': 'True',
+               'cookiefile': 'cookies.txt'
+              }
 FFMPEG_OPTIONS = {
     'before_options':
     '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
