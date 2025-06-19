@@ -1,9 +1,9 @@
 import discord
 from discord.ext import commands
 import yt_dlp
-from keep_alive import keep_alive
 import asyncio
 import os
+from keep_alive import keep_alive
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,9 +25,11 @@ intents.message_content = True
 bot = commands.Bot(command_prefix='g!', intents=intents)
 bot.remove_command("help")
 
-YDL_OPTIONS = {'format': 'bestaudio',
-               'noplaylist': 'True',
-               'cookiefile': 'cookies.txt'}
+YDL_OPTIONS = {
+    'format': 'bestaudio',
+    'noplaylist': 'True',
+    'cookiefile': 'cookies.txt'
+}
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn'
@@ -49,14 +51,15 @@ async def on_voice_state_update(member, before, after):
                 text_channels = member.guild.text_channels
                 if text_channels:
                     await text_channels[0].send("👋 Left the voice channel — no one was left listening.")
+                guild_owners.pop(member.guild.id, None)
 
 @bot.command()
 async def join(ctx):
     if ctx.author.voice:
         vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
         if vc and vc.is_connected():
-            return await ctx.send("✅ Already connected to a voice channel.")
-        vc = await ctx.author.voice.channel.connect()
+            return await ctx.send("✅ Already connected.")
+        await ctx.author.voice.channel.connect()
         guild_owners[ctx.guild.id] = ctx.author.id
         await ctx.send("✅ Joined the voice channel.")
     else:
@@ -65,7 +68,7 @@ async def join(ctx):
 @bot.command()
 async def leave(ctx):
     if ctx.guild.id in guild_owners and ctx.author.id != guild_owners[ctx.guild.id]:
-        return await ctx.send("❌ Only the user who started the session can make me leave.")
+        return await ctx.send("❌ Only the session owner can make me leave.")
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
         await ctx.send("👋 Left the voice channel.")
@@ -76,7 +79,6 @@ async def leave(ctx):
 @bot.command(name="p", aliases=["play"])
 async def play(ctx, *, search: str):
     guild_id = ctx.guild.id
-
     if guild_id not in guild_owners:
         guild_owners[guild_id] = ctx.author.id
 
@@ -91,6 +93,8 @@ async def play(ctx, *, search: str):
                 vc = await ctx.author.voice.channel.connect()
             except discord.ClientException:
                 vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+                if not vc:
+                    return await ctx.send("❌ Cannot connect to voice channel.")
         else:
             return await ctx.send("❌ You're not in a voice channel.")
 
@@ -101,7 +105,6 @@ async def play(ctx, *, search: str):
             info = ydl.extract_info(f"ytsearch:{search}", download=False)['entries'][0]
 
     info['requester'] = ctx.author.mention
-
     queue = get_queue(guild_id)
     await queue.put(info)
     await ctx.send(f"🎵 Added to queue: **{info['title']}**")
@@ -113,45 +116,44 @@ async def play(ctx, *, search: str):
 @bot.command()
 async def skip(ctx):
     guild_id = ctx.guild.id
-    if guild_id not in guild_owners:
-        return await ctx.send("❌ No music session active.")
-
-    if ctx.author.id == guild_owners[guild_id]:
+    if ctx.author.id == guild_owners.get(guild_id):
         ctx.voice_client.stop()
         return await ctx.send("⏭️ Skipped by session owner.")
 
     voters = skip_votes.setdefault(guild_id, set())
     if ctx.author.id in voters:
-        return await ctx.send("❌ You've already voted to skip.")
+        return await ctx.send("❌ You've already voted.")
     voters.add(ctx.author.id)
 
     vc = ctx.voice_client
     if vc:
         members = [m for m in vc.channel.members if not m.bot]
-        if len(voters) >= max(1, len(members) // 2):
+        needed = max(1, len(members) // 2)
+        if len(voters) >= needed:
             vc.stop()
             skip_votes[guild_id] = set()
-            await ctx.send("⏭️ Vote passed. Skipping song.")
+            await ctx.send("⏭️ Vote passed.")
         else:
-            await ctx.send(f"🗳️ Voted to skip. ({len(voters)}/{max(1, len(members)//2)} needed)")
+            await ctx.send(f"🗳️ Voted to skip. ({len(voters)}/{needed})")
 
 @bot.command()
 async def queue(ctx):
     queue = get_queue(ctx.guild.id)
     if queue.empty():
-        await ctx.send("📍 Queue is empty.")
+        await ctx.send("📭 Queue is empty.")
     else:
-        queue_list = list(queue._queue)
-        msg = "\n".join([f"{i+1}. {item['title']}" for i, item in enumerate(queue_list)])
-        await ctx.send(f"📜 Queue:\n{msg}")
+        msg = "
+".join([f"{i+1}. {item['title']}" for i, item in enumerate(queue._queue)])
+        await ctx.send(f"📜 Queue:
+{msg}")
 
 @bot.command()
 async def nowplaying(ctx):
-    current = now_playing.get(ctx.guild.id)
-    if current:
-        await ctx.send(f"🎧 Now playing: **{current['title']}**")
+    song = now_playing.get(ctx.guild.id)
+    if song:
+        await ctx.send(f"🎧 Now playing: **{song['title']}**")
     else:
-        await ctx.send("❌ Nothing is playing right now.")
+        await ctx.send("❌ Nothing is playing.")
 
 @bot.command()
 async def pause(ctx):
@@ -173,7 +175,6 @@ async def resume(ctx):
 async def stop(ctx):
     if ctx.guild.id in guild_owners and ctx.author.id != guild_owners[ctx.guild.id]:
         return await ctx.send("❌ Only the session owner can stop playback.")
-
     vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if vc and vc.is_playing():
         autoplay_enabled[ctx.guild.id] = False
@@ -186,21 +187,20 @@ async def stop(ctx):
 async def clear(ctx):
     if ctx.guild.id in guild_owners and ctx.author.id != guild_owners[ctx.guild.id]:
         return await ctx.send("❌ Only the session owner can clear the queue.")
-
-    queue = get_queue(ctx.guild.id)
-    queue._queue.clear()
-    await ctx.send("🪯 Cleared the queue.")
+    get_queue(ctx.guild.id)._queue.clear()
+    await ctx.send("🧹 Cleared the queue.")
 
 @bot.command()
 async def help(ctx):
-    embed = discord.Embed(title="📚 Music Bot Help", description="Commands you can use:", color=discord.Color.green())
-    embed.add_field(name="g!play [song]", value="🎵 Play a song", inline=False)
-    embed.add_field(name="g!skip", value="⏭️ Vote to skip", inline=False)
-    embed.add_field(name="g!stop", value="⏹️ Stop music", inline=False)
-    embed.add_field(name="g!queue", value="📜 Show queue", inline=False)
-    embed.add_field(name="g!nowplaying", value="🎧 What's playing now", inline=False)
-    embed.add_field(name="g!leave", value="👋 Leave voice channel", inline=False)
-    embed.add_field(name="g!clear", value="🪯 Clear queue", inline=False)
+    embed = discord.Embed(title="🎵 Music Bot Help", color=discord.Color.green())
+    embed.add_field(name="g!play", value="Play a song", inline=False)
+    embed.add_field(name="g!skip", value="Vote to skip", inline=False)
+    embed.add_field(name="g!stop", value="Stop music", inline=False)
+    embed.add_field(name="g!queue", value="Show queue", inline=False)
+    embed.add_field(name="g!pause", value="Pause song", inline=False)
+    embed.add_field(name="g!resume", value="Resume song", inline=False)
+    embed.add_field(name="g!leave", value="Leave voice", inline=False)
+    embed.add_field(name="g!clear", value="Clear queue", inline=False)
     await ctx.send(embed=embed)
 
 async def play_next(ctx):
@@ -209,18 +209,15 @@ async def play_next(ctx):
 
     if queue.empty():
         now_playing[guild_id] = None
-
         async def delayed_leave():
             await asyncio.sleep(300)
             if queue.empty():
                 vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
                 if vc and vc.is_connected():
                     await vc.disconnect()
-                    await ctx.send("👋 Left voice channel after 5 minutes of inactivity.")
+                    await ctx.send("👋 Left after inactivity.")
                     guild_owners.pop(guild_id, None)
-
-        task = asyncio.create_task(delayed_leave())
-        leave_tasks[guild_id] = task
+        leave_tasks[guild_id] = asyncio.create_task(delayed_leave())
         return
 
     if not autoplay_enabled.get(guild_id, True):
@@ -228,28 +225,24 @@ async def play_next(ctx):
 
     song = await queue.get()
     now_playing[guild_id] = song
-
     vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if not vc:
         if ctx.author.voice:
             try:
                 vc = await ctx.author.voice.channel.connect()
             except discord.ClientException:
-                return await ctx.send("❌ Already connected to a voice channel.")
-        else:
-            return await ctx.send("❌ You're not in a voice channel.")
+                return
 
-    def after_play(error):
+    def after_play(err):
         fut = asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
         try:
             fut.result()
         except Exception as e:
-            print(f"Error during after_play: {e}")
+            print(f"Playback error: {e}")
 
     source = discord.FFmpegPCMAudio(song['url'], **FFMPEG_OPTIONS)
     vc.play(source, after=after_play)
     await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
-
 
 keep_alive()
 bot.run(os.getenv("DISCORD_TOKEN"))
