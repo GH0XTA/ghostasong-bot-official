@@ -380,45 +380,29 @@ async def play_next(ctx=None):
             now_playing[guild_id] = None
 
             async def delayed_leave():
-                await asyncio.sleep(300)  # 5 minutes
-                vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+                await asyncio.sleep(300)
+                guild = ctx.guild if ctx else bot.get_guild(guild_id)
+                vc = discord.utils.get(bot.voice_clients, guild=guild)
                 if vc and vc.is_connected():
                     await vc.disconnect()
                     await ctx.send("👋 Left voice channel after 5 minutes of inactivity.")
-                # Clear ownership
                 guild_owners.pop(guild_id, None)
 
             task = asyncio.create_task(delayed_leave())
             leave_tasks[guild_id] = task
             return
 
-        # Ensure autoplay is enabled for this guild
         if not autoplay_enabled.get(guild_id, True):
             return
 
-        # Pop the next song
-        song = await queue.get()
-        now_playing[guild_id] = {
-            "title": song.get("title"),
-            "url": song.get("webpage_url"),
-            "duration": song.get("duration"),
-            "thumbnail": song.get("thumbnail"),
-            "requester": song.get("requester"),
-        }
-
+        # Try to connect before getting song
         vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
         if not vc or not vc.is_connected():
-            return  # Skip if bot somehow left
+            if ctx.author.voice:
+                vc = await ctx.author.voice.channel.connect()
+            else
 
-        source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
 
-        def after_play(error):
-            if error:
-                print(f"Error during playback: {error}")
-            bot.loop.create_task(play_next(ctx))
-
-        vc.play(source, after=after_play)
-        await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
 
 
 
