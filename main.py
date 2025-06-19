@@ -230,23 +230,26 @@ async def play_next(ctx):
     now_playing[guild_id] = song
 
     vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
-    if not vc or not vc.is_connected():
+    if not vc:
         if ctx.author.voice:
             try:
                 vc = await ctx.author.voice.channel.connect()
             except discord.ClientException:
-                return
+                return await ctx.send("❌ Already connected to a voice channel.")
+        else:
+            return await ctx.send("❌ You're not in a voice channel.")
 
     def after_play(error):
         fut = asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
         try:
             fut.result()
-        except:
-            pass
+        except Exception as e:
+            print(f"Error during after_play: {e}")
 
     source = discord.FFmpegPCMAudio(song['url'], **FFMPEG_OPTIONS)
     vc.play(source, after=after_play)
     await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
+
 
 keep_alive()
 bot.run(os.getenv("DISCORD_TOKEN"))
