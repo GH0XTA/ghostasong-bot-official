@@ -400,9 +400,30 @@ async def play_next(ctx=None):
         if not vc or not vc.is_connected():
             if ctx.author.voice:
                 vc = await ctx.author.voice.channel.connect()
-            else
+            else:
+                await ctx.send("❌ Bot is not in a voice channel and no user to follow.")
+                return
 
+        song = await queue.get()
+        now_playing[guild_id] = {
+            "title": song.get("title"),
+            "url": song.get("webpage_url"),
+            "duration": song.get("duration"),
+            "thumbnail": song.get("thumbnail"),
+            "requester": song.get("requester"),
+        }
 
+        source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
+
+        def after_play(error):
+            if error:
+                print(f"Error during playback: {error}")
+            bot.loop.create_task(play_next(ctx))
+
+        vc.play(source, after=after_play)
+
+        if ctx:
+            await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
 
 
 
