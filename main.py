@@ -4,6 +4,11 @@ import yt_dlp
 from keep_alive import keep_alive
 import asyncio
 import os
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 
 song_queue = {}
 autoplay_enabled = {}
