@@ -142,10 +142,10 @@ async def queue(ctx):
     if queue.empty():
         await ctx.send("📭 Queue is empty.")
     else:
-        msg = ""
-".join([f"{i+1}. {item['title']}" for i, item in enumerate(queue._queue)])
-        await ctx.send(f"📜 Queue:
-{msg}")
+        queue_list = list(queue._queue)
+        msg = "\n".join([f"{i+1}. {item['title']}" for i, item in enumerate(queue_list)])
+        await ctx.send(f"📜 Queue:\n{msg}")
+
 
 @bot.command()
 async def nowplaying(ctx):
