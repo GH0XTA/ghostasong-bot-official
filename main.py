@@ -183,6 +183,7 @@ async def stop(ctx):
     else:
         await ctx.send("❌ Nothing is playing.")
 
+
 @bot.command()
 async def clear(ctx):
     if ctx.guild.id in guild_owners and ctx.author.id != guild_owners[ctx.guild.id]:
