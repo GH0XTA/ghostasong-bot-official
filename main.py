@@ -263,12 +263,12 @@ async def play_next(ctx=None):
 
         source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
 
-        def after_play(err):
-            fut = asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
-            try:
-                fut.result()
-            except:
-                pass
+       def after_play(error):
+    if error:
+        print(f"Error during playback: {error}")
+    # Schedule next song
+    bot.loop.create_task(play_next(ctx))
+
 
         vc.play(source, after=after_play)
         await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
