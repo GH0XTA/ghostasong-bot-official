@@ -84,7 +84,7 @@ async def play(ctx, *, search: str):
         task.cancel()
 
     # Connect to voice if not already
-    vc = ctx.voice_client
+    vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if not vc:
         if ctx.author.voice:
             vc = await ctx.author.voice.channel.connect()
@@ -115,7 +115,7 @@ async def play(ctx, *, search: str):
 
 @bot.command()
 async def skip(ctx):
-    vc = ctx.voice_client
+    vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if vc and vc.is_playing():
         vc.stop()
         await ctx.send("⏭️ Skipping current song.")
@@ -183,7 +183,7 @@ async def resume(ctx):
 
 @bot.command()
 async def stop(ctx):
-    vc = ctx.voice_client
+    vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if vc and vc.is_playing():
         autoplay_enabled[ctx.guild.id] = False  # Pause autoplay
         vc.stop()  # Stop current song
@@ -228,7 +228,7 @@ async def play_next(ctx):
         async def delayed_leave():
             await asyncio.sleep(300)  # 5 minutes
             if queue.empty():
-                vc = ctx.voice_client
+                vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
                 if vc and vc.is_connected():
                     await vc.disconnect()
                     await ctx.send("👋 Left voice channel after 5 minutes of inactivity.")
