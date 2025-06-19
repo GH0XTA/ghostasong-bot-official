@@ -14,7 +14,7 @@ song_queue = {}
 autoplay_enabled = {}
 now_playing = {}
 leave_tasks = {}
-
+guild_contexts = {} 
 
 def get_queue(guild_id):
     if guild_id not in song_queue:
@@ -82,7 +82,7 @@ async def leave(ctx):
 @bot.command(name="p", aliases=["play"])
 async def play(ctx, *, search: str):
     guild_id = ctx.guild.id
-
+    guild_contexts[guild_id] = ctx
     # Cancel leave task if music is playing again
     task = leave_tasks.get(guild_id)
     if task and not task.done():
@@ -222,50 +222,57 @@ async def help(ctx):
 
 
 keep_alive()
-async def play_next(ctx):
-    guild_id = ctx.guild.id
-    queue = get_queue(guild_id)
+async def play_next(ctx=None):
+    for guild_id, queue in song_queue.items():
+        if ctx is None:
+            ctx = guild_contexts.get(guild_id)
+        if ctx is None:
+            continue
 
-    if queue.empty():
-        now_playing[guild_id] = None
+        queue = get_queue(guild_id)
+        if queue.empty():
+            now_playing[guild_id] = None
 
-        # Wait 5 minutes before leaving
-        async def delayed_leave():
-            await asyncio.sleep(300)  # 5 minutes
-            if queue.empty():
-                vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
-                if vc and vc.is_connected():
-                    await vc.disconnect()
-                    await ctx.send("👋 Left voice channel after 5 minutes of inactivity.")
+            async def delayed_leave():
+                await asyncio.sleep(300)
+                if queue.empty():
+                    vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+                    if vc and vc.is_connected():
+                        await vc.disconnect()
+                        await ctx.send("👋 Left voice channel after 5 minutes of inactivity.")
 
-        task = asyncio.create_task(delayed_leave())
-        leave_tasks[guild_id] = task
-        return
+            task = asyncio.create_task(delayed_leave())
+            leave_tasks[guild_id] = task
+            return
 
-    if not autoplay_enabled.get(guild_id, True):
-        return
+        if not autoplay_enabled.get(guild_id, True):
+            return
 
-    # Get next song
-    song = await queue.get()
-    now_playing[guild_id] = {
-        "title": song["title"],
-        "url": song["webpage_url"],
-        "duration": song.get("duration"),
-        "thumbnail": song.get("thumbnail"),
-        "requester": song["requester"],
-    }
+        song = await queue.get()
+        now_playing[guild_id] = {
+            "title": song["title"],
+            "url": song["webpage_url"],
+            "duration": song.get("duration"),
+            "thumbnail": song.get("thumbnail"),
+            "requester": song["requester"],
+        }
 
-    source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
+        vc = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+        if not vc:
+            return
 
-    def after_play(err):
-        fut = asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
-        try:
-            fut.result()
-        except:
-            pass
+        source = discord.FFmpegPCMAudio(song["url"], **FFMPEG_OPTIONS)
 
-    ctx.voice_client.play(source, after=after_play)
-    await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
+        def after_play(err):
+            fut = asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
+            try:
+                fut.result()
+            except:
+                pass
+
+        vc.play(source, after=after_play)
+        await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
+
 
 bot.run(os.getenv("DISCORD_TOKEN"))
 
