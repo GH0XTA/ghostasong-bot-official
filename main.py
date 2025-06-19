@@ -46,7 +46,7 @@ async def on_voice_state_update(member, before, after):
         if voice_client and voice_client.channel == before.channel:
             # Check if there are any human users left
             non_bots = [m for m in before.channel.members if not m.bot]
-             await asyncio.sleep(3)
+            await asyncio.sleep(3)
             if len(non_bots) == 0:
                 await voice_client.disconnect()
                 channel = before.channel
