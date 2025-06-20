@@ -221,5 +221,10 @@ async def play_next(ctx):
     vc.play(source, after=after_play)
     await ctx.send(f"🎶 Now playing: **{song['title']}** — requested by {song['requester']}")
 
-keep_alive()
-bot.run(os.getenv("DISCORD_TOKEN"))
+token = os.getenv("DISCORD_TOKEN")
+
+if not token or len(token) < 50:
+    raise ValueError("🚨 Invalid or missing DISCORD_TOKEN!")
+
+keep_alive()  # optional
+bot.run(token)
